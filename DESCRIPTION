@@ -1,0 +1,21 @@
+Package: ragmatic
+Title: Minicurso R pragmático para aMostra IME-USP 2016.
+Version: 0.0.0.9000
+Authors@R: person("Julio", "Trecenti", email = "j@jtrecenti.com", role = c("aut", "cre"))
+Description: Minicurso R pragmático para aMostra IME-USP 2016.
+Depends: R (>= 3.3.1)
+License: What license is it under?
+Encoding: UTF-8
+LazyData: true
+Imports: tidyverse,
+    caret,
+    randomForest,
+    plotly,
+    shiny,
+    knitr,
+    rmarkdown,
+    leaflet,
+    DT,
+    shinydashboard,
+    bookdown,
+    servr
