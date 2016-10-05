@@ -1,0 +1,196 @@
+# Transformação de dados
+
+A transformação de dados é uma tarefa usualmente dolorosa e demorada, podendo tomar a maior parte do tempo da análise. No entanto, como nosso interesse geralmente é na modelagem dos dados, essa tarefa é muitas vezes negligenciada.
+
+> "(...) The fact that data science exists as a field is a colossal failure of statistics. To me, [what I do] is what statistics is all about. It is gaining insight from data using modelling and visualization. Data munging and manipulation is hard and statistics has just said that’s not our domain."
+> 
+> Hadley Wickham
+
+## Pacotes `dplyr` e `tidyr`
+
+O `dplyr` é um dos pacotes mais úteis para realizar manipulação de dados, e procura aliar simplicidade e eficiência de uma forma bastante elegante. Os scripts em `R` que fazem uso inteligente dos verbos `dplyr` e as facilidades do operador _pipe_ tendem a ficar mais legíveis e organizados, sem perder velocidade de execução.
+
+Por ser um pacote que se propõe a realizar um dos trabalhos mais árduos da análise estatística, e por atingir esse objetivo de forma elegante, eficaz e eficiente, o `dplyr` pode ser considerado  como uma revolução no `R`.
+
+### Trabalhando com `tibble`s
+
+A `tibble` nada mais é do que um `data.frame`, mas com um método de impressão mais adequado. Outras diferenças podem ser estudadas [neste link](http://r4ds.had.co.nz/tibbles.html).
+
+Vamos assumir que temos a seguinte base de dados:
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+library(dplyr)
+library(stringr)
+d_cjsg <- readRDS('data/d_cjsg.rds')
+```
+
+```{r}
+d_cjsg
+```
+
+### As cinco funções principais do `dplyr`
+
+- `filter`
+- `mutate`
+- `select`
+- `arrange`
+- `summarise`
+
+### Características
+
+- O _input_  é sempre uma `tibble`, e o _output_  é sempre um `tibble`.
+- No primeiro argumento colocamos o `tibble`, e nos outros argumentos colocamo o que queremos fazer.
+- A utilização é facilitada com o emprego do operador `%>%`
+
+### Vantagens
+
+- Utiliza `C` e `C++` por trás da maioria das funções, o que geralmente torna o código mais eficiente.
+- Pode trabalhar com diferentes fontes de dados, como bases relacionais (SQL) e `data.table`.
+
+### `select`
+
+- Utilizar `starts_with(x)`, `contains(x)`, `matches(x)`, `one_of(x)`, etc.
+- Possível colocar nomes, índices, e intervalos de variáveis com `:`.
+
+```{r}
+d_cjsg %>% 
+  select(id, cd_acordao, comarca, relator = relatora)
+```
+
+```{r}
+d_cjsg %>% 
+  select(cd_acordao:comarca, classe_assunto)
+```
+
+```{r}
+d_cjsg %>% 
+  select(n_processo, starts_with('data_'))
+```
+
+### `filter`
+
+- Parecido com `subset`.
+- Condições separadas por vírgulas é o mesmo que separar por `&`.
+
+```{r}
+d_cjsg %>% 
+  select(id, cd_acordao, comarca, relator = relatora) %>% 
+  filter(comarca == 'São Paulo')
+```
+
+```{r}
+library(lubridate)
+d_cjsg %>% 
+  select(id, cd_acordao, comarca, data_julgamento, relator = relatora) %>% 
+  filter(comarca %in% c('Campinas', 'Sorocaba') &
+         (day(dmy(data_julgamento)) >= 29 | day(dmy(data_julgamento)) < 25))
+
+d_cjsg %>% 
+  select(comarca) %>% 
+  filter(str_detect(comarca, '^[gG]'))
+```
+
+### `mutate`
+
+- Parecido com `transform`, mas aceita várias novas colunas iterativamente.
+- Novas variáveis devem ter o mesmo `length` que o `nrow` do bd oridinal ou `1`.
+
+```{r}
+library(stringr)
+d_cjsg %>% 
+  select(id, n_processo, data_julgamento) %>% 
+  mutate(ano_julgamento = year(dmy(data_julgamento)),
+         ano_proc = str_sub(n_processo, 12, 15),
+         ano_proc = as.numeric(ano_proc),
+         tempo_anos = ano_julgamento - ano_proc)
+```
+
+### `arrange`
+
+- Simplesmente ordena de acordo com as opções.
+- Utilizar `desc` para ordem decrescente.
+
+```{r}
+library(stringr)
+d_cjsg %>% 
+  select(id, n_processo, data_julgamento) %>% 
+  mutate(ano_julgamento = year(dmy(data_julgamento)),
+         ano_proc = str_sub(n_processo, 12, 15),
+         ano_proc = as.numeric(ano_proc)) %>% 
+  mutate(tempo_anos = ano_julgamento - ano_proc) %>% 
+  arrange(desc(tempo_anos))
+```
+
+### `summarise`
+
+- Retorna um vetor de tamanho `1` a partir de uma conta com as variáveis.
+- Geralmente é utilizado em conjunto com `group_by`.
+- Algumas funções importantes: `n()`, `n_distinct()`.
+
+```{r}
+d_cjsg %>% 
+  select(id, n_processo, comarca, data_julgamento, orgao_julgador) %>% 
+  mutate(ano_julgamento = year(dmy(data_julgamento)),
+         ano_proc = str_sub(n_processo, 12, 15),
+         ano_proc = as.numeric(ano_proc)) %>% 
+  mutate(tempo_anos = ano_julgamento - ano_proc) %>% 
+  arrange(desc(tempo_anos)) %>% 
+  group_by(comarca, orgao_julgador) %>% 
+  summarise(n = n(),
+            media_anos = mean(tempo_anos),
+            min_anos = min(tempo_anos),
+            max_anos = max(tempo_anos)) %>% 
+  filter(n > 5) %>% 
+  arrange(desc(media_anos))
+```
+
+```{r}
+d_cjsg %>% 
+  count(relatora, sort = TRUE) %>% 
+  mutate(prop = n / sum(n), prop = scales::percent(prop))
+```
+
+### `gather`
+
+- "Empilha" o banco de dados
+
+```{r warning=FALSE, message=FALSE}
+library(tidyr)
+d_cjsg %>% 
+  select(cd_acordao:data_registro) %>% 
+  gather(key, value, -cd_acordao) %>% 
+  arrange(cd_acordao)
+```
+
+### `spread`
+
+- "Joga" uma variável nas colunas
+- É essencialmente a função inversa de `gather`
+
+```{r}
+d_cjsg %>% 
+  distinct(cd_acordao, .keep_all = TRUE) %>% 
+  select(cd_acordao:data_registro) %>% 
+  gather(key, value, -cd_acordao) %>% 
+  spread(key, value)
+```
+
+### Funções auxiliares
+
+- `unite` junta duas ou mais colunas usando algum separador (`_`, por exemplo).
+- `separate` faz o inverso de `unite`, e uma coluna em várias usando um separador.
+
+```{r}
+d_cjsg %>% 
+  select(n_processo, classe_assunto) %>% 
+  separate(classe_assunto, c('classe', 'assunto'), sep = ' / ', 
+           extra = 'merge', fill = 'right') %>% 
+  count(assunto, sort = TRUE)
+```
+
+### Um pouco mais de transformação de dados
+
+- Para juntar tabelas, usar `inner_join`, `left_join`, `anti_join`, etc.
+- Para realizar operações mais gerais, usar `do`.
+- Para retirar duplicatas, utilizar `distinct`.
+

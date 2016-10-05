@@ -1,0 +1,152 @@
+# Análise exploratória: inscritos no curso {#set-up}
+
+```{r echo=FALSE}
+# suppressMessages(read_csv('data/lista.csv')) %>% 
+#   filter(!str_detect(`Nome Completo:`, 'Trecenti')) %>% 
+#   select(-`RG:`, -`Nome Completo:`, -`E-mail:`) %>% 
+#   write_csv('data/lista_anon.csv')
+```
+
+```{r setup, message=FALSE, warning=FALSE}
+library(magrittr)
+library(tidyverse)
+library(stringr)
+library(lubridate)
+library(forcats)
+```
+
+## Objetivos
+
+- Verificar a bagagem dos alunos.
+- Verificar se há concentração de inscritos da graduação.
+- Verificar se há diferenças entre a turma do CEC e do Jacy.
+
+## Base de dados
+
+```{r echo=FALSE}
+renomear <- function(d) {
+  x <- names(d) %>%
+    tolower %>%
+    abjutils::rm_accent() %>%
+    str_replace_all('[[:space:]/\\-().:]+', '_') %>%
+    str_trim() %>% 
+    str_replace_all('_+', '_') %>% 
+    str_replace_all('_$', '')
+  names(d) <- x
+  d
+}
+
+re_usp <- regex('usp|universidade de são paulo|ime', ignore_case = TRUE)
+re_ufscar <- regex('ufscar|universidade de são carlos', ignore_case = TRUE)
+re_ime <- regex('ime', ignore_case = TRUE)
+re_unip <- regex('unip', ignore_case = TRUE)
+```
+
+```{r message=FALSE, warning=FALSE}
+d_alunos <- read_csv('data/lista_anon.csv')
+glimpse(d_alunos)
+```
+
+## Data tidying
+
+```{r message=FALSE, warning=FALSE}
+d_alunos %<>% 
+  mutate(Timestamp = mdy_hms(Timestamp)) %>% 
+  rownames_to_column('id_pessoa') %>% 
+  mutate(cec = id_pessoa %in% as.character(1:45)) %>% 
+  gather(pergunta, resposta, matches('^[0-9]')) %>% 
+  renomear() %>% 
+  spread(pergunta, resposta) %>% 
+  mutate(uni = with(., case_when(
+    str_detect(universidade, re_usp) ~ 'USP',
+    str_detect(universidade, re_ufscar) ~ 'UFSCar',
+    str_detect(universidade, re_unip) ~ 'UNIP',
+    TRUE ~ 'Outra'
+  ))) %>% 
+  mutate(esc = with(., case_when(
+    str_detect(estou_no_a, 'raduado|formado|Mestrado|Pós') ~ 'Formado / Pós',
+    str_detect(estou_no_a, 'Graduação') ~ 'Graduação',
+    TRUE ~ 'Outra'
+  ))) %>% 
+  mutate(ime = str_detect(universidade, re_ime),
+         cec = if_else(cec, 'CEC', 'Jacy'))
+```
+
+## Alguns gráficos
+
+Volume de inscrições no tempo
+
+```{r, fig.width=9, fig.height=3}
+d_alunos %>% 
+  arrange(timestamp) %>% 
+  mutate(um = 1, inscricoes = cumsum(um)) %>% 
+  ggplot(aes(x = timestamp, y = inscricoes, colour = cec)) +
+  geom_step() +
+  geom_hline(yintercept = 45, colour = 'red', linetype = 2) +
+  scale_x_datetime(breaks = scales::date_breaks('1 day'), 
+                   labels = scales::date_format('%b %d')) +
+  scale_y_continuous(breaks = 0:4 * 25, limits = c(0, 100)) +
+  theme_bw(14) +
+  xlab('Data') +
+  ylab('Volume de inscrições')
+```
+
+Escolaridade dos inscritos
+
+```{r fig.width=7, fig.height=3}
+d_alunos %>% 
+  replace_na(list(esc = 'Outra')) %>% 
+  mutate(esc = fct_infreq(esc)) %>% 
+  ggplot(aes(x = esc, fill = cec)) +
+  geom_bar(position = 'dodge') +
+  theme_bw(14) +
+  xlab('') +
+  ylab('Quantidade de inscritos')
+```
+
+Perguntas 1 e 3: sobre utilização do R.
+
+```{r fig.width=9, fig.height=9}
+d_alunos %>% 
+  gather(questao, resposta, matches('^[13]')) %>% 
+  replace_na(list(resposta = 'Não.')) %>% 
+  count(cec, questao, resposta) %>% 
+  mutate(prop = n / sum(n)) %>% 
+  ggplot(aes(x = str_wrap(resposta, 20), fill = cec, y = prop)) +
+  geom_bar(position = 'dodge', stat = 'identity') +
+  facet_wrap(~questao, scales = 'free_x', ncol = 1) +
+  scale_y_continuous(labels = scales::percent) +
+  geom_text(aes(label = scales::percent(prop), group = cec), 
+            position = position_dodge(.9), vjust = -.2) +
+  theme_bw(14) +
+  theme(strip.background = element_blank()) +
+  xlab('') +
+  ylab('Proporção de inscritos')
+```
+
+Pergunta 2: sobre conhecimento em outras linguagens. Não soma 100%!
+
+```{r fig.width=9}
+d_alunos %>% 
+  gather(questao, resposta, matches('^[2]')) %>% 
+  replace_na(list(resposta = 'Nenhuma')) %>% 
+  mutate(ling = str_split(resposta, '\\., ')) %>% 
+  unnest(ling) %>% 
+  mutate(ling = str_replace(ling, '\\.$', '')) %>%
+  group_by(cec) %>% 
+  mutate(ntot = n_distinct(id_pessoa)) %>% 
+  group_by(cec, ling) %>% 
+  summarise(n = n_distinct(id_pessoa), ntot = first(ntot)) %>% 
+  mutate(prop = n / ntot) %>% 
+  mutate(ling = str_wrap(ling, 20) %>% fct_reorder(prop, .desc = TRUE)) %>%
+  ggplot(aes(x = ling, fill = cec, y = prop)) +
+  geom_bar(position = 'dodge', stat = 'identity') +
+  scale_y_continuous(labels = scales::percent, limits = c(0, .7)) +
+  geom_text(aes(label = scales::percent(prop), group = cec), 
+            position = position_dodge(.9), vjust = -.2) +
+  theme_bw(14) +
+  xlab('Linguagem de programação') +
+  ylab('Proporção de inscritos')
+```
+
+<!-- ---------------------------------------------------------------------- -->
