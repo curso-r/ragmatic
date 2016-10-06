@@ -7,7 +7,6 @@ O `ggplot2` é um pacote do R voltado para a criação de gráficos estatístico
 Para mais informações sobre a Gramática dos Gráficos, você pode consultar o livro [*The Grammar of graphics*](http://www.springer.com/statistics/computational+statistics/book/978-0-387-24544-7), escrito pelo Leland Wilkinson, ou o livro [ggplot2: elegant graphics for data analysis](http://ggplot2.org/book/), do Hadley Wickham. Um [pdf do livro](http://moderngraphics11.pbworks.com/f/ggplot2-Book09hWickham.pdf) também está disponível.
 
 <!-- ---------------------------------------------------------------------- -->
-Parei aqui. Daqui pra baixo está desatualizado!
 
 ### Construindo gráficos
 
@@ -23,8 +22,9 @@ No `ggplot2`, os gráficos são construídos camada por camada (ou, *layers*, em
 
 ```{r aula05chunk03, message=FALSE, warning=FALSE}
 library(ggplot2)
-ggplot(data = mtcars, aes(x = disp, y = mpg)) + 
-  geom_point()
+
+ggplot(data = mtcars) + 
+  geom_point(aes(x = disp, y = mpg))
 ```
 
 Observe que o primeiro argumento da função `ggplot` é um data frame. A função `aes()` descreve como as variáveis são mapeadas em aspectos visuais de formas geométricas definidas pelos *geoms*. Aqui, essas formas geométricas são pontos, selecionados pela função `geom_point()`, gerando, assim, um gráfico de dispersão. A combinação dessas duas camadas define o tipo de gráfico que você deseja construir.
@@ -37,7 +37,9 @@ No exemplo acima, atribuímos aspectos de posição: ao eixo y mapeamos a variá
 
 
 ```{r aula05chunk04}
-ggplot(data = mtcars, aes(x = disp, y = mpg, colour = as.factor(am))) + 
+mtcars %>% 
+  mutate(am = as.character(am)) %>% 
+  ggplot(aes(x = disp, y = mpg, colour = am)) + 
   geom_point()
 ```
 
@@ -50,7 +52,7 @@ ggplot(mtcars, aes(x = disp, y = mpg, colour = cyl)) +
 
 Aqui, o número de cilindros, `cyl`, é representado pela tonalidade da cor azul.
 
-**Nota**: por *default*, a legenda é insirida no gráfico automaticamente.
+**Nota**: por *default*, a legenda é inserida no gráfico automaticamente.
 
 Também podemos mapear o tamanho dos pontos à uma variável de interesse:
 
@@ -73,6 +75,29 @@ Os *geoms* definem qual forma geométrica será utilizada para a visualização 
 - geom_density: para densidades
 - geom_area: para áreas
 - geom_bar: para barras
+
+```{r}
+d_cjsg %>% 
+  group_by(comarca) %>% 
+  mutate(n = n()) %>% 
+  ungroup() %>% 
+  filter(n > 4000) %>%
+  select(-n) %>% 
+  group_by(comarca) %>% 
+  summarise(n = n()) %>% 
+  mutate(prop = n / sum(n)) %>%
+  mutate(coluna = str_sub(comarca, 1, 1)) %>% 
+  ggplot() + 
+  geom_bar(aes(x = comarca, y = prop),
+           stat = 'identity') +
+  facet_wrap(~coluna, scales = 'free')
+
+
+
+
+```
+
+
 
 Veja a seguir como é fácil gerar diversos gráficos diferentes utilizando a mesma estrutura do gráfico de dispersão acima:
 

@@ -1,0 +1,354 @@
+# Modelos
+
+Você precisará dessas bibliotecas:
+
+```{r message=FALSE, warning=FALSE}
+library(magrittr)
+library(tidyverse)
+library(modelr)
+library(broom)
+library(caret)
+library(randomForest)
+library(tree)
+library(httr)
+library(jpeg)
+```
+
+Se alguma delas não estiver instalada, rode `install.packages('pacote')`.
+
+## Recuperação de imagens
+
+Neste exemplo iremos comparar visualmente o desempenho de modelos de **regressão linear**, **árvores de decisão** e outros modelos em duas diferentes situações.
+
+Para isso, iremos mexer com imagens **.jpg**.
+
+### Imagens **.jpg**
+
+Antes de iniciarmos a brincadeira, vale uma breve introdução às imagens **.jpg**, pois elas formarão nossas `tibble`'s.
+
+Arquivos com extensão *.jpg* guardam 5 coordenadas que são suficientes para serem entendidas e desenhadas pelo computador:
+
+- `x` e `y` são as coordenadas cartesianas da imagem; e
+- `r`, `g` e `b` *red*, *green* e *blue*, respectivamente, que juntas formam cores.
+
+As cores que conhecemos podem ser compostas pela combinação dessas três cores. A intensidade de cada cor varia de 0 a 1.
+
+Para cada pixel no plano (x,y) existe uma cor associada. Assim, uma imagem pode ser representada por um banco de dados com 5 colunas: `x`, `y`, `r`, `g` e `b`.
+
+### Objetivo
+
+- Verificar qual modelo entre **regressão linear** e **árvores de decisão** é o mais adequado para recuperar a o componente azul da imagem **purple_wave.jpg**.
+
+- Verificar qual modelo entre **regressão linear** e **árvores de decisão** é o mais adequado para recuperar a o componente azul da imagem **xadrez_colorido.jpg**.
+
+### Preparação do Banco de dados
+
+Para construir nossos bancos de dados, vamos carregar as duas imagens abaixo.
+
+![purple_wave.jpg](http://curso-r.github.io/posts/assets/fig/purple_wave.jpg)
+
+![xadrez_colorido.jpg](http://curso-r.github.io/posts/assets/fig/xadrez_colorido.jpg)
+
+
+```{r}
+img_import <- function(link) {
+  # a) carrega uma imagem jpeg no R 
+  img <- link %>% 
+    httr::GET() %>% 
+    httr::content()
+  # b) transforma o array da imagem em data.frame com 
+  # infos de posicao (x,y) e cor (r,g,b) dimensões da imagem
+  img_dim <- dim(img)
+  img_tidy <- tibble(
+    x = rep(1:img_dim[2], each = img_dim[1]),
+    y = rep(img_dim[1]:1, img_dim[2]),
+    r = as.vector(img[,,1]),
+    g = as.vector(img[,,2]),
+    b = as.vector(img[,,3])
+  ) %>%
+    mutate(cor = rgb(r, g, b), id = 1:n())
+  img_tidy
+}
+```
+
+```{r}
+img_purple <- img_import('http://curso-r.github.io/posts/assets/fig/purple_wave.jpg')
+img_xadrez <- img_import('http://curso-r.github.io/posts/assets/fig/xadrez_colorido.jpg')
+
+img_purple
+```
+
+**Obs**: Função auxiliar para plotar imagens com `ggplot2`
+
+```{r}
+img_ggplot <- function(d) {
+  d %>% 
+    ggplot(aes(x = x, y = y)) +
+    coord_equal() +
+    geom_point(shape = 15, size = 1, colour = d$cor) +
+    guides(colour = FALSE) +
+    theme_void()
+}
+
+img_purple %>% img_ggplot
+```
+
+### Base de treino e base de teste
+
+Vamos dividir nossa `tibble` em duas partes: base de treino e base de teste.
+
+```{r}
+# para reprodução
+set.seed(1) 
+img_purple_part <- img_purple %>% 
+  resample_partition(c(test = .3, train = .7))
+```
+
+Veja como fica a **base de teste sem o azul** e como é o **azul original isolado**.
+
+```{r, fig.height=12, fig.width=8}
+img_purple_part %>% 
+  with(test) %>% 
+  with(data) %>% 
+  mutate(cor1 = rgb(r, g, 0), cor2 = rgb(0, 0, b)) %>% 
+  select(-cor) %>% 
+  gather(tipo_cor, cor, cor1, cor2) %>% 
+  img_ggplot() +
+  facet_wrap(~tipo_cor, ncol = 1)
+```
+
+Agora, vamos fingir que não temos a cor azul `b` da base de teste. A nossa tarefa é recuperar o azul da base de teste, a partir de um modelo construído somente com a base de treino.
+
+```{r}
+img_purple_train <- img_purple_part %>% 
+  with(train) %>% 
+  with(data)
+```
+
+```{r}
+img_purple_train %>% 
+  sample_n(500) %>% 
+  select(x:b) %>% 
+  GGally::ggpairs()
+```
+
+### Modelo linear
+
+Aparentemente `r` e `g` possuem uma boa correlação com `b`. Vamos ajustar um modelo linear para selecionar as variáveis.
+
+```{r}
+img_lm <- lm(b ~ r + g + x + y, data = img_purple_train)
+img_lm %>% tidy
+```
+
+Alguns gráficos de diagnóstico
+
+```{r}
+img_lm %>% 
+  augment() %>% 
+  ggplot(aes(x = .fitted, y = .std.resid)) +
+  geom_point() +
+  geom_smooth()
+
+img_lm %>% 
+  augment() %>% 
+  ggplot(aes(x = .fitted, y = .std.resid)) +
+  geom_hex() + 
+  geom_smooth()
+
+img_lm %>% 
+  augment() %>% 
+  ggplot() +
+  geom_qq(aes(sample = .std.resid)) +
+  geom_abline(linetype = 2)
+
+img_lm %>% 
+  augment() %>% 
+  ggplot(aes(.hat, .cooksd)) +
+  geom_point()
+```
+
+
+
+Agora vamos plotar o resultado.
+
+```{r, fig.height=12, fig.width=8}
+img_purple_lm <- img_purple_part %>% 
+  with(test) %>% 
+  with(data) %>% 
+  add_predictions(img_lm, 'b_pred')
+
+img_purple_lm %>% 
+  mutate(b_pred = ifelse(b_pred < 0, 0, b_pred)) %>% # small hack!!!
+  mutate(cor_pred = rgb(r, g, b_pred)) %>% 
+  gather(tipo_cor, cor, cor, cor_pred) %>% 
+  img_ggplot() +
+  facet_wrap(~tipo_cor, ncol = 1)
+```
+
+Erro de predição:
+
+```{r}
+img_purple_lm %>% 
+  summarise(erro = sqrt(mean((b - b_pred) ^ 2)))
+```
+
+### Árvore de decisão
+
+Agora vamos ajustar um modelo de árvore de decisão!
+
+```{r}
+img_tree <- tree::tree(b ~ r + g + x + y, data = img_purple_train)
+plot(img_tree)
+text(img_tree)
+```
+
+```{r, fig.height=12, fig.width=8}
+img_purple_tree <- img_purple_part %>% 
+  with(test) %>% 
+  with(data) %>% 
+  add_predictions(img_tree, 'b_pred')
+
+img_purple_tree %>% 
+  mutate(b_pred = ifelse(b_pred < 0, 0, b_pred)) %>% # small hack!!!
+  mutate(cor_pred = rgb(r, g, b_pred)) %>% 
+  gather(tipo_cor, cor, cor, cor_pred) %>% 
+  img_ggplot() +
+  facet_wrap(~tipo_cor, ncol = 1)
+```
+
+Erro de predição:
+
+```{r}
+img_purple_tree %>% 
+  summarise(erro = sqrt(mean((b - b_pred) ^ 2)))
+```
+
+### Modelo aditivo generalizado (GAM)
+
+O GAM considera "smooths" no lugar de preditores lineares a partir de uma "spline".
+
+```{r}
+img_gam <- mgcv::gam(b ~ s(r) + s(g) + s(x) + s(y), data = img_purple_train)
+plot(img_gam)
+```
+
+Agora vamos plotar o resultado.
+
+```{r, fig.height=12, fig.width=8}
+img_purple_gam <- img_purple_part %>% 
+  with(test) %>% 
+  with(data) %>% 
+  add_predictions(img_gam, 'b_pred')
+
+img_purple_gam %>% 
+  mutate(b_pred = ifelse(b_pred < 0, 0, b_pred)) %>% # small hack!!!
+  mutate(cor_pred = rgb(r, g, b_pred)) %>% 
+  gather(tipo_cor, cor, cor, cor_pred) %>% 
+  img_ggplot() +
+  facet_wrap(~tipo_cor, ncol = 1)
+```
+
+Erro de predição:
+
+```{r}
+img_purple_gam %>% 
+  summarise(erro = sqrt(mean((b - b_pred) ^ 2)))
+```
+
+### Random Forest
+
+O modelo de florestas aleatórias é um dos modelos conhecidos como "caixinha preta", pois seus resultados não são facilmente interpretáveis. No modelo de árvores, podemos interpretar o gráfico facilmente. Na regressão linear, podemos interpretar os coeficientes.
+
+```{r}
+# img_rf <- randomForest(b ~ r + g + x + y, data = img_purple_train)
+img_rf <- readRDS('data/img_rf.rds')
+img_rf
+```
+
+```{r, fig.height=12, fig.width=8}
+img_purple_rf <- img_purple_part %>% 
+  with(test) %>% 
+  with(data) %>% 
+  add_predictions(img_rf, 'b_pred')
+
+img_purple_rf %>% 
+  mutate(b_pred = ifelse(b_pred < 0, 0, b_pred)) %>% # small hack!!!
+  mutate(cor_pred = rgb(r, g, b_pred)) %>% 
+  gather(tipo_cor, cor, cor, cor_pred) %>% 
+  img_ggplot() +
+  facet_wrap(~tipo_cor, ncol = 1)
+```
+
+Erro de predição:
+
+```{r}
+img_purple_tree %>% 
+  summarise(erro = sqrt(mean((b - b_pred) ^ 2)))
+```
+
+### Exercício: Outra Imagem
+
+- Repita a análise para a imagem *xadrez_colorido.jpg*.
+
+
+
+### Captcha
+
+Se um dado é público, ele deve ser acessível (mesmo sistematicamente). Por isso, sou completamente contra a utilização de captchas para acesso a dados públicos. Mas os captchas existem para não onerar os sistemas das entidades que armazenam esses dados (essa é a única justificativa minimamente aceitável). 
+
+Uma solução para esse problema, muito superior do que usar captchas, é criar uma API de acesso. Isso reduz o volume de transferência de informações e há possibilidade de controle de acesso para não onerar os servidores. Por exemplo, 1000 acessos por cadastro por dia ou 10 acessos por cadastro por minuto.
+
+Na ABJ, para conseguir os dados que queríamos, tivemos de quebrar alguns captchas. Vamos ver brevemente como funciona o captchaTJRS.
+
+Baixar um novo captcha da web.
+
+```{r}
+# devtools::install_github('abjur/captchaTJRS')
+library(captchaTJRS)
+arq <- download()
+arq
+```
+
+`ler` e `desenhar`: desenhar no rstudio.
+
+```{r}
+arq %>% ler
+arq %>% ler %>% desenhar
+```
+
+`limpar()` faz a limpeza da imagem. Separamos as letras usando uma regra fixa.
+
+```{r}
+arq %>% 
+  ler() %>% 
+  dplyr::mutate(r = g, b = g) %T>% {print(desenhar(.))} %>% 
+  dplyr::mutate(r = 1 - r)    %T>% {print(desenhar(.))} %>% 
+  dplyr::filter(r <= 0.2)     %T>% {print(desenhar(.))} %>% 
+  dplyr::mutate(r = ifelse(r < 1, 0, 1)) %T>% {print(desenhar(.))} %>% 
+  dplyr::mutate(g = r, b = r) %T>% {print(desenhar(.))} %>% 
+  limpar(y = 40, k = 6) %>% 
+  dplyr::mutate(g = r, b = r) %T>% {print(desenhar(.))} %>% 
+  dplyr::filter(y >= 5, y <= 40, 
+                x >= 10, x <= 106) %T>% {print(desenhar(.))} %>% 
+  dplyr::mutate(group = cut(x, c(10, 34, 58, 82, 106), 
+                            labels = c(1, 2, 3, 4)), 
+                group = as.character(group), 
+                group = ifelse(is.na(group), "4", group)) %>% 
+  desenhar() +
+  geom_point(aes(colour = group))
+```
+
+`predizer`: predizendo imagem.
+
+```{r}
+arq %>% predizer()
+```
+
+`classificar`: construção da base de treino
+
+```{r}
+a <- download()
+classificar(a, path = 'data/')
+```
+

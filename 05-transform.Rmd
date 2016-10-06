@@ -53,8 +53,10 @@ d_cjsg
 - Possível colocar nomes, índices, e intervalos de variáveis com `:`.
 
 ```{r}
+d_cjsg[['nome com espaço']] = 1
+
 d_cjsg %>% 
-  select(id, cd_acordao, comarca, relator = relatora)
+  select(id, cd_acordao, comarca, relator = relatora, nome_sem_espaco = `nome com espaço`)
 ```
 
 ```{r}
@@ -65,6 +67,15 @@ d_cjsg %>%
 ```{r}
 d_cjsg %>% 
   select(n_processo, starts_with('data_'))
+```
+
+Exercício
+
+selecione de id até comarca e todas as colunas que têm underline.
+
+```{r}
+d_cjsg %>% 
+  select(id:comarca, contains('_'))
 ```
 
 ### `filter`
@@ -82,12 +93,13 @@ d_cjsg %>%
 library(lubridate)
 d_cjsg %>% 
   select(id, cd_acordao, comarca, data_julgamento, relator = relatora) %>% 
-  filter(comarca %in% c('Campinas', 'Sorocaba') &
+  filter(comarca %in% c('Campinas', 'Sorocaba'),
          (day(dmy(data_julgamento)) >= 29 | day(dmy(data_julgamento)) < 25))
 
 d_cjsg %>% 
   select(comarca) %>% 
-  filter(str_detect(comarca, '^[gG]'))
+  filter(str_detect(comarca, '^[gG]')) %>% 
+  distinct
 ```
 
 ### `mutate`
@@ -116,9 +128,10 @@ d_cjsg %>%
   select(id, n_processo, data_julgamento) %>% 
   mutate(ano_julgamento = year(dmy(data_julgamento)),
          ano_proc = str_sub(n_processo, 12, 15),
-         ano_proc = as.numeric(ano_proc)) %>% 
-  mutate(tempo_anos = ano_julgamento - ano_proc) %>% 
-  arrange(desc(tempo_anos))
+         ano_proc = as.numeric(ano_proc),
+         tempo_anos = ano_julgamento - ano_proc) %>% 
+  arrange(desc(tempo_anos)) %>% 
+  select(tempo_anos)
 ```
 
 ### `summarise`
@@ -149,6 +162,7 @@ d_cjsg %>%
   count(relatora, sort = TRUE) %>% 
   mutate(prop = n / sum(n), prop = scales::percent(prop))
 ```
+
 
 ### `gather`
 

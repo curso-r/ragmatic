@@ -93,13 +93,14 @@ expressoes <- list(
 ```
 
 ```{r echo=FALSE}
-purrr::map(testes, ~str_detect(testes, .x)) %>% 
+purrr::map(expressoes, ~str_detect(testes, .x)) %>% 
   {do.call(rbind, .)} %>% 
   as.data.frame() %>% 
   setNames(testes) %>% 
   dplyr::mutate(regex = expressoes) %>% 
-  dplyr::select(regex, dplyr::everything()) %>% 
-  knitr::kable()
+  dplyr::select(regex, dplyr::everything()) %>%   DT::datatable()
+    
+  # knitr::kable()
 ```
 
 #### Quantificadores

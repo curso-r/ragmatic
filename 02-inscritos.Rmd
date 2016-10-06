@@ -36,7 +36,7 @@ renomear <- function(d) {
   d
 }
 
-re_usp <- regex('usp|universidade de são paulo|ime', ignore_case = TRUE)
+re_usp <- regex('usp|uso|universidade de são paulo|ime', ignore_case = TRUE)
 re_ufscar <- regex('ufscar|universidade de são carlos', ignore_case = TRUE)
 re_ime <- regex('ime', ignore_case = TRUE)
 re_unip <- regex('unip', ignore_case = TRUE)
@@ -50,7 +50,7 @@ glimpse(d_alunos)
 ## Data tidying
 
 ```{r message=FALSE, warning=FALSE}
-d_alunos %<>% 
+d_alunos %<>%
   mutate(Timestamp = mdy_hms(Timestamp)) %>% 
   rownames_to_column('id_pessoa') %>% 
   mutate(cec = id_pessoa %in% as.character(1:45)) %>% 
@@ -85,7 +85,8 @@ d_alunos %>%
   geom_hline(yintercept = 45, colour = 'red', linetype = 2) +
   scale_x_datetime(breaks = scales::date_breaks('1 day'), 
                    labels = scales::date_format('%b %d')) +
-  scale_y_continuous(breaks = 0:4 * 25, limits = c(0, 100)) +
+  scale_y_continuous(breaks = 0:4 * 25, 
+                     limits = c(0, 100)) +
   theme_bw(14) +
   xlab('Data') +
   ylab('Volume de inscrições')
